@@ -4,6 +4,7 @@
 #include "SPI.h"
 #include <obniz.h>
 #include <TinyGPSPlus.h>
+#include <math.h>
 
 const float mC = 261.626; // ド
 const float mD = 293.665; // レ
@@ -67,6 +68,18 @@ enum {
 
 /** CanSatの状態遷移ステータス */
 volatile int state = ST_STAND_BY;
+
+// 目的地点　緯度: 35.676975, 経度: 139.475372
+struct {
+  float lat = 35.676975;
+  float lng = 139.475372;
+} goal_Val;
+
+// 移動前の緯度経度
+struct {
+  float lat;
+  float lng;
+} prev_Val;
 
 /**
  * setup関数
@@ -188,7 +201,7 @@ void updateGPSValTask(void *pvParameters) {
         sensorVal.lng = gps.location.lng();
       }
     }
-    delay(5000);
+    delay(4000);
   }
 }
 
@@ -262,14 +275,33 @@ void stand_by() {
 
 /** 目標地点へ走行 */
 void drive() {
-  forward(255);
+  // 緯度: 35.676975, 経度: 139.475372
+
+  // 0. 現在の緯度経度を記録
+  save_current_pos();
+  // 3. 直進(nミリ秒)
+  forward(200);
   delay(5000);
   stop();
-  delay(2000);
-  back(100);
-  delay(5000);
+  // 4. 目標地点到達確認
+
+  // 1. 自機の緯度経度と目標の緯度経度から、回転する角度を返す
+  float angle = calc_return_angle();
+  int degree = angle * (180.0 / M_PI);
+  if (degree < 0) {
+    degree += 360;
+  }
+
+  Serial.print("angle: ");
+  Serial.println(angle);
+  Serial.print(", degree: ");
+  Serial.println(degree);
+
+  // 2. 角度を渡して、回転する
+  // 4.5-5s で一回転
+  rotate(255);
+  delay(5000.0 / 360.0 * degree);
   stop();
-  delay(2000);
 }
 
 /** 目標地点に到着 */
@@ -407,6 +439,22 @@ void forward(int pwm) {
   ledcWrite(CHANNEL_B, pwm);
 }
 
+/** 回転 */
+void rotate(int pwm) {
+  if (pwm < 0) pwm = 0;
+  if (pwm > 255) pwm = 255;
+
+  // 左モータ（CW，時計回り）
+  digitalWrite(pin_motor_A[1], LOW);
+  digitalWrite(pin_motor_A[0], HIGH);
+  ledcWrite(CHANNEL_A, pwm);
+
+  // 右モータ（CW，時計回り）
+  digitalWrite(pin_motor_B[1], LOW);
+  digitalWrite(pin_motor_B[0], HIGH);
+  ledcWrite(CHANNEL_B, pwm);
+}
+
 /** 後退 */
 void back(int pwm) {
   if (pwm < 0) pwm = 0;
@@ -434,6 +482,24 @@ void stop() {
   digitalWrite(pin_motor_B[0], LOW);
   digitalWrite(pin_motor_B[1], LOW);
   ledcWrite(CHANNEL_B, HIGH);
+}
+
+/** 現在の緯度経度を記録 */
+void save_current_pos() {
+  prev_Val.lat = sensorVal.lat;
+  prev_Val.lng = sensorVal.lng;
+
+  char tmp[256];
+  sprintf(tmp, "current: lat: %f, lng: %f", prev_Val.lat, prev_Val.lng);
+  writeFile(SD, "/100kinsat.txt", tmp);
+}
+
+/** 現在の緯度経度と目的地の差 */
+float calc_return_angle() {
+  float dist_lat = fabsf(sensorVal.lat - prev_Val.lat);
+  float dist_lng = fabsf(sensorVal.lng - prev_Val.lng);
+  float angle = atan2(dist_lng, dist_lat);
+  return angle;
 }
 
 /** SDカードに新規書き込みする */
