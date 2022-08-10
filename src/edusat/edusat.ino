@@ -286,16 +286,7 @@ void drive() {
   // 4. 目標地点到達確認
 
   // 1. 自機の緯度経度と目標の緯度経度から、回転する角度を返す
-  float angle = calc_return_angle();
-  int degree = angle * (180.0 / M_PI);
-  if (degree < 0) {
-    degree += 360;
-  }
-
-  Serial.print("angle: ");
-  Serial.println(angle);
-  Serial.print(", degree: ");
-  Serial.println(degree);
+  int degree = calc_return_angle();
 
   // 2. 角度を渡して、回転する
   // 4.5-5s で一回転
@@ -495,11 +486,28 @@ void save_current_pos() {
 }
 
 /** 現在の緯度経度と目的地の差 */
-float calc_return_angle() {
-  float dist_lat = fabsf(sensorVal.lat - prev_Val.lat);
-  float dist_lng = fabsf(sensorVal.lng - prev_Val.lng);
-  float angle = atan2(dist_lng, dist_lat);
-  return angle;
+int calc_return_angle() {
+  float dist_current_lat = fabsf(sensorVal.lat - goal_Val.lat);
+  float dist_current_lng = fabsf(sensorVal.lng - goal_Val.lng);
+  float dist_prev_lat = fabsf(prev_Val.lat - goal_Val.lat);
+  float dist_prev_lng = fabsf(prev_Val.lng - goal_Val.lng);
+  float current_angle = atan2(dist_current_lng, dist_current_lat);
+  float prev_angle = atan2(dist_prev_lng, dist_prev_lat);
+  float current_degree = current_angle * (180.0 / M_PI);
+  float prev_degree = prev_angle * (180.0 / M_PI);
+  float degree = prev_degree - current_degree;
+  if (degree < 0) {
+    // degree分　時計周り
+    //degree += 360;
+    current_degree += 360;
+  } else {
+    // degree分　反時計回り
+  }
+  Serial.print("degree: ");
+  Serial.println(degree);
+
+  //return int(degree);
+  return int(current_degree);
 }
 
 /** SDカードに新規書き込みする */
