@@ -90,6 +90,9 @@ void setup() {
   startSendObnizTask();
 
   beep(beep_wakeup, sizeof(beep_wakeup) / sizeof(float), 150);
+  beep(beep_error, sizeof(beep_error) / sizeof(float), 150);
+  const float mario[] = {mE * 2, mE * 2, mE * 4, mC * 2, mE * 2, mG * 2};
+  beep(mario, sizeof(mario) / sizeof(float), 150);
 }
 
 /**
