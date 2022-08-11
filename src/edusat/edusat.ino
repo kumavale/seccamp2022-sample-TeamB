@@ -197,11 +197,14 @@ void updateGPSValTask(void *pvParameters) {
       char c = hs.read();
       gps.encode(c);
       if (gps.location.isUpdated()) {
-        sensorVal.lat = gps.location.lat();
-        sensorVal.lng = gps.location.lng();
+        double r = 0.2;
+        sensorVal.lat = r * sensorVal.lat + (1-r) * gps.location.lat();
+        sensorVal.lng = r * sensorVal.lng + (1-r) * gps.location.lng();
+        // sensorVal.lat = gps.location.lat();
+        // sensorVal.lng = gps.location.lng();
       }
     }
-    delay(4000);
+    delay(1500);
   }
 }
 
@@ -284,19 +287,26 @@ void drive() {
   delay(5000);
   stop();
   // 4. 目標地点到達確認
+  // TODO: この処理も書かないと!
 
   // 1. 自機の緯度経度と目標の緯度経度から、回転する角度を返す
   int degree = calc_return_angle();
 
   // 2. 角度を渡して、回転する
-  // 4.5-5s で一回転
-  rotate(255);
-  delay(5000.0 / 360.0 * degree);
+  // 1-2s で一回転
+  if (degree < 0) {
+    rotate_right(255);
+    delay(1500.0 / 360.0 * -degree);
+  } else {
+    rotate_left(255);
+    delay(1500.0 / 360.0 * degree);
+  }
   stop();
 }
 
 /** 目標地点に到着 */
 void goal() {
+  state = ST_GOAL;
 }
 
 /** ObnizOSの初期化処理 */
@@ -412,6 +422,8 @@ void mpu_init() {
 /** GPSセンサの初期化処理 */
 void gps_init() {
   hs.begin(9600);
+  sensorVal.lat = gps.location.lat();
+  sensorVal.lng = gps.location.lng();
 }
 
 /** 前進 */
@@ -430,8 +442,8 @@ void forward(int pwm) {
   ledcWrite(CHANNEL_B, pwm);
 }
 
-/** 回転 */
-void rotate(int pwm) {
+/** 左回転 */
+void rotate_left(int pwm) {
   if (pwm < 0) pwm = 0;
   if (pwm > 255) pwm = 255;
 
@@ -443,6 +455,22 @@ void rotate(int pwm) {
   // 右モータ（CW，時計回り）
   digitalWrite(pin_motor_B[1], LOW);
   digitalWrite(pin_motor_B[0], HIGH);
+  ledcWrite(CHANNEL_B, pwm);
+}
+
+/** 右回転 */
+void rotate_right(int pwm) {
+  if (pwm < 0) pwm = 0;
+  if (pwm > 255) pwm = 255;
+
+  // 左モータ（CCW，反時計回り）
+  digitalWrite(pin_motor_A[0], LOW);
+  digitalWrite(pin_motor_A[1], HIGH);
+  ledcWrite(CHANNEL_A, pwm);
+
+  // 右モータ（CCW，反時計回り）
+  digitalWrite(pin_motor_B[0], LOW);
+  digitalWrite(pin_motor_B[1], HIGH);
   ledcWrite(CHANNEL_B, pwm);
 }
 
@@ -487,27 +515,32 @@ void save_current_pos() {
 
 /** 現在の緯度経度と目的地の差 */
 int calc_return_angle() {
-  float dist_current_lat = fabsf(sensorVal.lat - goal_Val.lat);
-  float dist_current_lng = fabsf(sensorVal.lng - goal_Val.lng);
-  float dist_prev_lat = fabsf(prev_Val.lat - goal_Val.lat);
-  float dist_prev_lng = fabsf(prev_Val.lng - goal_Val.lng);
-  float current_angle = atan2(dist_current_lng, dist_current_lat);
-  float prev_angle = atan2(dist_prev_lng, dist_prev_lat);
+  float dist_current_lat = fabsf(goal_Val.lat - sensorVal.lat); 
+  float dist_current_lng = fabsf(goal_Val.lng - sensorVal.lng);
+  float dist_prev_lat = fabsf(sensorVal.lat - prev_Val.lat); 
+  float dist_prev_lng = fabsf(sensorVal.lng - prev_Val.lng);
+  
+  // float dist_prev_lat = fabsf(prev_Val.lat - goal_Val.lat);
+  // float dist_prev_lng = fabsf(prev_Val.lng - goal_Val.lng);
+  // ラジアン
+  float current_angle = atan2(dist_current_lng, dist_current_lat);// 今から進みたい向き
+  float prev_angle = atan2(dist_prev_lng, dist_prev_lat); // 今まで進んできた向き
+  // 角度
   float current_degree = current_angle * (180.0 / M_PI);
   float prev_degree = prev_angle * (180.0 / M_PI);
-  float degree = prev_degree - current_degree;
-  if (degree < 0) {
-    // degree分　時計周り
-    //degree += 360;
-    current_degree += 360;
-  } else {
-    // degree分　反時計回り
-  }
+  float degree = current_degree - prev_degree; // 自信なし
+
+  // if (degree < 0) {
+  //   // degree分　時計周り
+  //   degree += 360;
+  // }
   Serial.print("degree: ");
   Serial.println(degree);
 
-  //return int(degree);
-  return int(current_degree);
+  //if (degree <= 45 || 315 <= degree) return 0;
+  if (-180 <= degree && degree <= -135 || 135 <= degree && degree <= 180) return 0;
+
+  return int(degree);
 }
 
 /** SDカードに新規書き込みする */
